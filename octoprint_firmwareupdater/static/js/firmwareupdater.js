@@ -167,6 +167,21 @@ $(function() {
             return self.dfuUtilPathBroken() || self.dfuUtilPathOk();
         });
 
+        // Observables for esptool config settings
+        self.configEsptoolPath = ko.observable();
+        self.configEsptoolChip = ko.observable()
+        self.configEsptoolAddress = ko.observable()
+        self.configEsptoolBaud = ko.observable()
+        self.configEsptoolCommandLine = ko.observable();
+
+        // Observables for bossac UI messages
+        self.esptoolPathBroken = ko.observable(false);
+        self.esptoolPathOk = ko.observable(false);
+        self.esptoolPathText = ko.observable();
+        self.esptoolPathHelpVisible = ko.computed(function() {
+            return self.esptoolPathBroken() || self.esptoolPathOk();
+        });
+
         // Observables for stm32flash config settings
         self.configStm32flashPath = ko.observable();
         self.configStm32flashVerify = ko.observable();
@@ -193,6 +208,7 @@ $(function() {
         self.showLpc1768Config = ko.observable(false);
         self.showDfuConfig = ko.observable(false);
         self.showDfuUtilConfig = ko.observable(false);
+        self.showEsptoolConfig = ko.observable(false);
         self.showStm32flashConfig = ko.observable(false);
         self.showMarlinBftConfig = ko.observable(false);
 
@@ -528,6 +544,7 @@ $(function() {
             self.showLpc1768Config(false);
             self.showDfuConfig(false);
             self.showDfuUtilConfig(false);
+            self.showEsptoolConfig(false);
             self.showStm32flashConfig(false);
             self.showMarlinBftConfig(false);
             self.showAdvanced2Tab(false);
@@ -546,6 +563,8 @@ $(function() {
                 self.showDfuConfig(true);
             } else if(value == 'dfuutil'){
                 self.showDfuUtilConfig(true);
+            } else if(value == 'esptool'){
+                self.showEsptoolConfig(true);
             } else if(value == 'stm32flash'){
                 self.showStm32flashConfig(true);
             } else if(value == 'marlinbft'){
@@ -608,6 +627,10 @@ $(function() {
                 alert = gettext("The AVR MCU type is not selected.");
             }
 
+            if (self.getProfileSetting("flash_method") == "esptool" && !self.getProfileSetting("esptool_path")) {
+                alert = gettext("The esptool path is not configured.");
+            }
+
             if ((self.getProfileSetting("flash_method") == "marlinbft" || self.getProfileSetting("flash_method") == "bootcmdr") && !self.printerState.isReady()) {
                 alert = gettext("The printer is not connected.");
             }
@@ -621,7 +644,7 @@ $(function() {
             }
 
             if (self.getProfileSetting("flash_method") == "marlinbft" && self.getProfileSetting("marlinbft_use_custom_filename") && !self.checkMarlinBftCustomFileName()) {
-                alert = gettext("The target filename is invalid. Filename must be 8dot3 format.");
+                alert = gettext("The target filename is invalid.");
             }
 
             if (!self.flashPort() &! self.getProfileSetting("flash_method") == "dfuprogrammer") {
@@ -755,6 +778,9 @@ $(function() {
                                     }
                                     case "already_flashing": {
                                         message = gettext("Already flashing.");
+                                    }
+                                    case "noespdevice": {
+                                        message = gettext("Failed to connect to Espressif device.");
                                     }
                                 }
                             }
@@ -944,6 +970,13 @@ $(function() {
             self.configDfuUtilPath(self.getProfileSetting("dfuutil_path"));
             self.configDfuUtilCommandLine(self.getProfileSetting("dfuutil_commandline"));
 
+            // Load the esptool settings
+            self.configEsptoolPath(self.getProfileSetting("esptool_path"));
+            self.configEsptoolChip(self.getProfileSetting("esptool_chip"));
+            self.configEsptoolAddress(self.getProfileSetting("esptool_address"));
+            self.configEsptoolBaud(self.getProfileSetting("esptool_baudrate"));
+            self.configEsptoolCommandLine(self.getProfileSetting("esptool_commandline"));
+
             // Load the lpc1768 settings
             self.configLpc1768Path(self.getProfileSetting("lpc1768_path"));
             self.configLpc1768UnmountCommand(self.getProfileSetting("lpc1768_unmount_command"));
@@ -995,7 +1028,7 @@ $(function() {
                 keyValue = ((defaultValue === true || defaultValue === false) && keyValue == null) ? false : keyValue;
                 keyValue = (Number.isInteger(defaultValue) && keyValue == null) ? 0 : keyValue;
 
-                if (Number.isInteger(parseInt(keyValue))) {
+                if (typeof keyValue === 'string' && keyValue.substring(0,2).toLowerCase() != '0x' && Number.isInteger(parseInt(keyValue))) {
                     profile[key] = parseInt(keyValue);
                 }
 
@@ -1071,6 +1104,13 @@ $(function() {
             // DFU-Util settings
             profiles[index]["dfuutil_path"] = self.configDfuUtilPath();
             profiles[index]["dfuutil_commandline"] = self.configDfuUtilCommandLine();
+
+            // Esptool settings
+            profiles[index]["esptool_path"] = self.configEsptoolPath();
+            profiles[index]["esptool_baudrate"] = self.configEsptoolBaud();
+            profiles[index]["esptool_chip"] = self.configEsptoolChip().toLowerCase();
+            profiles[index]["esptool_address"] = self.configEsptoolAddress();
+            profiles[index]["esptool_commandline"] = self.configEsptoolCommandLine();
 
             // LPC176x settings
             profiles[index]["lpc1768_path"] = self.configLpc1768Path();
@@ -1206,6 +1246,10 @@ $(function() {
             self.dfuUtilPathOk(false);
             self.dfuUtilPathText("");
 
+            self.esptoolPathBroken(false);
+            self.esptoolPathOk(false);
+            self.esptoolPathText("");
+
             self.lpc1768PathBroken(false);
             self.lpc1768PathOk(false);
             self.lpc1768PathText("");
@@ -1237,6 +1281,18 @@ $(function() {
 
         self.resetDfuUtilCommandLine = function() {
             self.configDfuUtilCommandLine(self.profileDefaults["dfuutil_commandline"]);
+        };
+
+        self.resetEsptoolChip = function() {
+            self.configEsptoolChip(self.profileDefaults["esptool_chip"]);
+        };
+        
+        self.resetEsptoolAddress = function() {
+            self.configEsptoolAddress(self.profileDefaults["esptool_address"]);
+        };
+
+        self.resetEsptoolCommandLine = function() {
+            self.configEsptoolCommandLine(self.profileDefaults["esptool_commandline"]);
         };
 
         self.resetLpc1768UnmountCommand = function() {
@@ -1273,7 +1329,7 @@ $(function() {
 
         self.checkMarlinBftCustomFileName = function() {
             var filename = self.getProfileSetting("marlinbft_custom_filename")
-            var filenamePattern = new RegExp("^[A-z0-9_-]{1,8}\\.[A-z0-9]{1,3}$");
+            var filenamePattern = new RegExp("^[A-z0-9_-]{1,}\\.[A-z0-9]{1,3}$");
             return filenamePattern.test(filename);
         }
 
@@ -1465,6 +1521,44 @@ $(function() {
                         }
                         self.dfuUtilPathOk(response.result);
                         self.dfuUtilPathBroken(!response.result);
+                    }
+                })
+            }
+        };
+
+        self.testEsptoolPath = function() {
+            var filePathRegEx = new RegExp("^(\/[^\0/]+)+$");
+
+            if (!filePathRegEx.test(self.configEsptoolPath())) {
+                self.esptoolPathText(gettext("The path is not valid"));
+                self.esptoolPathOk(false);
+                self.esptoolPathBroken(true);
+            } else {
+                $.ajax({
+                    url: API_BASEURL + "util/test",
+                    type: "POST",
+                    dataType: "json",
+                    data: JSON.stringify({
+                        command: "path",
+                        path: self.configEsptoolPath(),
+                        check_type: "file",
+                        check_access: "x"
+                    }),
+                    contentType: "application/json; charset=UTF-8",
+                    success: function(response) {
+                        if (!response.result) {
+                            if (!response.exists) {
+                                self.esptoolPathText(gettext("The path doesn't exist"));
+                            } else if (!response.typeok) {
+                                self.esptoolPathText(gettext("The path is not a file"));
+                            } else if (!response.access) {
+                                self.esptoolPathText(gettext("The path is not an executable"));
+                            }
+                        } else {
+                            self.esptoolPathText(gettext("The path is valid"));
+                        }
+                        self.esptoolPathOk(response.result);
+                        self.esptoolPathBroken(!response.result);
                     }
                 })
             }
